@@ -7,6 +7,7 @@ struct FVoicePacketHeader {
     uint8_t packetType;       // 0: Join, 1: Voice Data, 2: Leave
     char roomCode[16];        // 룸 코드
     char speakerName[32];     // 발화자 이름
+    char sessionToken[65];    // lobby-issued token; stripped from relayed packets
     uint32_t payloadSize;     // 뒤에 따라오는 음성 데이터 
 };
 #pragma pack(pop)
@@ -61,6 +62,10 @@ void UVoiceNetworkClient::SendVoiceData(const TArray<uint8>& Payload, const FStr
     // 헤더 값 설정
     FVoicePacketHeader Header;
     FMemory::Memzero(&Header, sizeof(FVoicePacketHeader));
+    const FString Session = GameNetworkSubsystem->GetVoiceSession();
+    if (Session.Len() != 64) return;
+    FTCHARToUTF8 Utf8Session(*Session);
+    FMemory::Memcpy(Header.sessionToken, Utf8Session.Get(), 64);
 
     Header.packetType = (Mode == TEXT("join_voice")) ? 0 : 1;
     
@@ -110,6 +115,10 @@ void UVoiceNetworkClient::SendLeavePacket(const FString& RoomCode, const FString
 
     FVoicePacketHeader Header;
     FMemory::Memzero(&Header, sizeof(FVoicePacketHeader));
+    const FString Session = GameNetworkSubsystem->GetVoiceSession();
+    if (Session.Len() != 64) return;
+    FTCHARToUTF8 Utf8Session(*Session);
+    FMemory::Memcpy(Header.sessionToken, Utf8Session.Get(), 64);
     Header.packetType = 2; // Leave
     Header.payloadSize = 0;
 

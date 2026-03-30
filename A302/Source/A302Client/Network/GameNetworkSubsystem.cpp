@@ -1,5 +1,8 @@
 #include "Network/GameNetworkSubsystem.h"
 #include "Network/UDPHandler.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 void UGameNetworkSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -36,6 +39,7 @@ void UGameNetworkSubsystem::Deinitialize()
 {
 	if (WebSocketClient)
 	{
+		VoiceSession.Empty();
 		WebSocketClient->Disconnect();
 		WebSocketClient = nullptr;
 	}
@@ -71,6 +75,7 @@ void UGameNetworkSubsystem::Disconnect(EProtocolType Protocol)
 {
 	if (Protocol == EProtocolType::WebSocket && WebSocketClient)
 	{
+		VoiceSession.Empty();
 		WebSocketClient->Disconnect();
 	}
 	else if (Protocol == EProtocolType::UDP && UDPHandler)
@@ -146,6 +151,20 @@ void UGameNetworkSubsystem::SendBinaryPacket(EProtocolType Protocol, const TArra
 
 void UGameNetworkSubsystem::HandleWebSocketMessage(const FString& Message)
 {
+    TSharedPtr<FJsonObject> Packet;
+    auto Reader = TJsonReaderFactory<>::Create(Message);
+    if (FJsonSerializer::Deserialize(Reader, Packet) && Packet.IsValid())
+    {
+        FString Type;
+        const TSharedPtr<FJsonObject>* Data = nullptr;
+        if (Packet->TryGetStringField(TEXT("type"), Type) &&
+            (Type == TEXT("room_created") || Type == TEXT("room_joined")) &&
+            Packet->TryGetObjectField(TEXT("data"), Data))
+        {
+            VoiceSession.Empty();
+            (*Data)->TryGetStringField(TEXT("voiceSession"), VoiceSession);
+        }
+    }
 	OnPacketReceived.Broadcast(Message);
 }
 

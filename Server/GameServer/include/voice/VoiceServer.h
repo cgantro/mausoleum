@@ -17,13 +17,14 @@ class VoiceServer : public IServer{
 private:
     struct VoiceInboundTask {
         NetPacket packet;
+        std::chrono::steady_clock::time_point queuedAt;
     };
 
     static constexpr size_t kVoiceWorkerCount = 2;
 
     VoiceClientManager clientManager;
     VoicePacketRouter packetRouter;
-    NetworkService network;
+    NetworkService network{Voice::Config::INBOUND_QUEUE_CAPACITY, Voice::Config::OUTBOUND_QUEUE_CAPACITY};
     std::chrono::steady_clock::time_point lastCleanupTime;
     std::vector<std::unique_ptr<ConcurrentQueue<VoiceInboundTask>>> voiceInboundQueues_;
     std::vector<std::thread> voiceWorkers_;

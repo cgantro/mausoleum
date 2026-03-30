@@ -9,6 +9,7 @@ using WebSocketType = uWS::WebSocket<false, true, int>;
 struct LobbyClientInfo {
     std::string roomCode;
     std::string playerName;
+    std::string voiceSession;
 };
 
 class LobbyClientManager : public IClientManager<WebSocketType*, LobbyClientInfo> {

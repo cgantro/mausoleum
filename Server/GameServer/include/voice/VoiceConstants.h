@@ -8,6 +8,10 @@ namespace Voice::Protocol {
 }
 
 namespace Voice::Config {
+    constexpr size_t INBOUND_QUEUE_CAPACITY = 128;
+    constexpr size_t OUTBOUND_QUEUE_CAPACITY = 256;
+    constexpr int MAX_QUEUE_AGE_MS = 100;
+    constexpr bool IsQueuedVoiceExpired(double ageMilliseconds) { return ageMilliseconds > MAX_QUEUE_AGE_MS; }
     constexpr int CLEANUP_INTERVAL_SECONDS = 60;
     constexpr int CLIENT_TIMEOUT_SECONDS = 300;
     constexpr int UDP_MAX_PACKET_SIZE = 4096;
