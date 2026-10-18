@@ -4,6 +4,8 @@ template <typename T>
 void ConcurrentQueue<T>::push(T item) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_) return;
+        if (capacity_ && queue_.size() >= capacity_) { queue_.pop(); ++dropped_; }
         queue_.push(std::move(item));
     }
     cv_.notify_one();

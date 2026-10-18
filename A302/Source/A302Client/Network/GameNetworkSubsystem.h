@@ -73,6 +73,8 @@ public:
 
 	void SendBinaryPacket(EProtocolType Protocol, const TArray<uint8>& Payload);
 
+	FString GetVoiceSession() const { return VoiceSession; }
+
 	// 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Network")
 	FOnPacketReceived OnPacketReceived;
@@ -82,6 +84,7 @@ public:
 	FOnWebSocketBinaryPacketReceived OnWebSocketBinaryPacketReceived;
 
 private:
+	FString VoiceSession;
 	UPROPERTY()
 	TObjectPtr<UA302WebSocketClient> WebSocketClient;
 

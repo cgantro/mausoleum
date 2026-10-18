@@ -1,10 +1,16 @@
 #include "lobby/LobbyClientManager.h"
+#include "voice/VoiceSessionRegistry.h"
 
 void LobbyClientManager::addClient(WebSocketType* const& key, const LobbyClientInfo& data) {
-    clients[key] = data;
+    removeClient(key);
+    auto info = data;
+    info.voiceSession = VoiceSessionRegistry::instance().issue(data.roomCode, data.playerName);
+    clients[key] = std::move(info);
 }
 
 void LobbyClientManager::removeClient(WebSocketType* const& key) {
+    auto it = clients.find(key);
+    if (it != clients.end()) VoiceSessionRegistry::instance().revoke(it->second.voiceSession);
     clients.erase(key);
 }
 

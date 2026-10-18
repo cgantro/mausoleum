@@ -1,6 +1,7 @@
 #include "Room/A302RoomRuntimeSubsystem.h"
 
 #include "Room/RoomWorldOffset.h"
+#include "Room/RoomRuntimePolicy.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LevelStreamingDynamic.h"
 #include "Engine/World.h"
@@ -259,17 +260,9 @@ bool UA302RoomRuntimeSubsystem::TryRequestLevelInstance(FA302RoomRuntimeState& R
 
 bool UA302RoomRuntimeSubsystem::ShouldCollectZombieRoom(const FA302RoomRuntimeState& RoomState, double CurrentServerTime) const
 {
-    const double IdleSeconds = CurrentServerTime - RoomState.LastTouchedServerTime;
-    if (IdleSeconds < FMath::Max(10.0f, ZombieRoomTimeoutSeconds))
-    {
-        return false;
-    }
-
-    if (!RoomPopulationResolver)
-    {
-        return false;
-    }
-
-    return RoomPopulationResolver(RoomState.RoomCode) <= 0;
+    if (!RoomPopulationResolver ||
+        CurrentServerTime - RoomState.LastTouchedServerTime < FMath::Max(10.0f, ZombieRoomTimeoutSeconds)) return false;
+    return A302RoomRuntimePolicy::ShouldCollect(
+        RoomState.LastTouchedServerTime, CurrentServerTime, ZombieRoomTimeoutSeconds,
+        true, RoomPopulationResolver(RoomState.RoomCode));
 }
-

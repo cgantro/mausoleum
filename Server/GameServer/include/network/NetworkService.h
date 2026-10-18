@@ -14,7 +14,7 @@ class NetworkService {
 public:
     using Handler = std::function<void(NetPacket&&, NetworkService&)>;
 
-    NetworkService();
+    explicit NetworkService(size_t inboundCapacity = 0, size_t outboundCapacity = 0);
     ~NetworkService();
 
     bool start();

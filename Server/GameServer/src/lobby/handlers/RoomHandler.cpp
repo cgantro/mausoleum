@@ -23,6 +23,11 @@ void RoomHandler::sendError(WebSocketType *ws, const std::string &message)
 
 bool RoomHandler::checkNameAndSendErrorIfTaken(WebSocketType *ws, const std::string &playerName)
 {
+    if (playerName.empty() || playerName.size() >= 32)
+    {
+        sendError(ws, "Player name must contain 1-31 UTF-8 bytes");
+        return true;
+    }
     if (roomManager.isNameTakenGlobal(playerName))
     {
         sendError(ws, std::string(NAME_TAKEN));
@@ -42,6 +47,7 @@ bool RoomHandler::extractContext(const json &data, std::string &outRoomCode, std
 void RoomHandler::handleCreateRoom(WebSocketType *ws, const json &data)
 {
     std::string playerName = data.value(KEY_PLAYER_NAME, "");
+    if (clientManager.hasClient(ws)) { sendError(ws, "Leave current room before joining another"); return; }
 
     if (checkNameAndSendErrorIfTaken(ws, playerName))
         return;
@@ -54,7 +60,7 @@ void RoomHandler::handleCreateRoom(WebSocketType *ws, const json &data)
     LOG_INFO("Lobby", "[" << room.getRoomCode() << "] " << playerName << " 님 방 생성 (방장)");
 
     ws->send(json({{std::string(KEY_TYPE), RES_ROOM_CREATED},
-                   {std::string(KEY_DATA), {{std::string(KEY_ROOM_CODE), room.getRoomCode()}, {std::string(KEY_PLAYER_NAME), playerName}, {std::string(KEY_IS_HOST), true}}}})
+                   {std::string(KEY_DATA), {{std::string(KEY_ROOM_CODE), room.getRoomCode()}, {std::string(KEY_PLAYER_NAME), playerName}, {"voiceSession", clientManager.getClientInfo(ws)->voiceSession}, {std::string(KEY_IS_HOST), true}}}})
                  .dump(),
              uWS::OpCode::TEXT);
 }
@@ -63,6 +69,7 @@ void RoomHandler::handleJoinRoom(WebSocketType *ws, const json &data)
 {
     std::string roomCode = data.value(KEY_ROOM_CODE, "");
     std::string playerName = data.value(KEY_PLAYER_NAME, "");
+    if (clientManager.hasClient(ws)) { sendError(ws, "Leave current room before joining another"); return; }
 
     if (!roomManager.roomExists(roomCode))
     {
@@ -74,6 +81,7 @@ void RoomHandler::handleJoinRoom(WebSocketType *ws, const json &data)
         return;
 
     Room *room = roomManager.getRoom(roomCode);
+    if (!room) { clientManager.removeClient(ws); return; }
     if (room)
     {
         room->addPlayer(Player(playerName, createSendFunc(ws)));
@@ -96,6 +104,7 @@ void RoomHandler::handleJoinRoom(WebSocketType *ws, const json &data)
                             {std::string(KEY_ROOM_CODE), roomCode},
                             {std::string(KEY_PLAYER_NAME), playerName},
                             {std::string(KEY_IS_HOST), room->getHostId() == playerName},
+                            {"voiceSession", clientManager.getClientInfo(ws)->voiceSession},
                             {"existingPlayers", existingPlayersArray} // 배열 탑재
                         }}})
                      .dump(),
@@ -144,7 +153,13 @@ void RoomHandler::handleLeaveRoom(WebSocketType *ws, const json &data)
     std::string roomCode, playerName;
     Room *room = nullptr;
 
-    if (extractContext(data, roomCode, playerName, room))
+    const auto* owner = clientManager.getClientInfo(ws);
+    if (!owner) return;
+    roomCode = owner->roomCode;
+    playerName = owner->playerName;
+    room = roomManager.getRoom(roomCode);
+    if (!room) { clientManager.removeClient(ws); return; }
+    if (room)
     {
         bool bHostChanged = room->removePlayer(playerName);
         clientManager.removeClient(ws);

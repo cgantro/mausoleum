@@ -1,5 +1,7 @@
 #include "voice/VoiceServer.h"
+#include <algorithm>
 #include <memory>
+#include "voice/VoiceSessionRegistry.h"
 #include <thread>
 
 namespace {
@@ -81,6 +83,12 @@ void VoiceServer::onUdpPacket(NetPacket&& packet) {
         packet.sharedData = std::static_pointer_cast<const std::vector<char>>(payload);
     }
 
+    ParsedPacket admission{};
+    if (!buildPacket(packet, admission) ||
+        !VoiceSessionRegistry::instance().authorize(
+            fixedString(admission.header->sessionToken, sizeof(admission.header->sessionToken)),
+            admission.roomCode, admission.speakerName, admission.senderKey)) return;
+
     std::string roomCode;
     if (!extractRoomCode(packet, roomCode)) {
         return;
@@ -93,6 +101,7 @@ void VoiceServer::onUdpPacket(NetPacket&& packet) {
 
     VoiceInboundTask task;
     task.packet = std::move(packet);
+    task.queuedAt = std::chrono::steady_clock::now();
     voiceInboundQueues_[shard]->push(std::move(task));
 }
 
@@ -173,7 +182,7 @@ void VoiceServer::startVoiceWorkers() {
     voiceWorkers_.reserve(kVoiceWorkerCount);
     voiceInboundQueues_.reserve(kVoiceWorkerCount);
     for (size_t i = 0; i < kVoiceWorkerCount; ++i) {
-        voiceInboundQueues_.push_back(std::make_unique<ConcurrentQueue<VoiceInboundTask>>());
+        voiceInboundQueues_.push_back(std::make_unique<ConcurrentQueue<VoiceInboundTask>>(Voice::Config::INBOUND_QUEUE_CAPACITY));
     }
 
     for (size_t i = 0; i < kVoiceWorkerCount; ++i) {
@@ -206,10 +215,16 @@ void VoiceServer::voiceWorkerLoop(size_t workerIndex) {
 
     VoiceInboundTask task;
     while (voiceInboundQueues_[workerIndex]->pop(task)) {
+        const auto age = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - task.queuedAt).count();
+        if (Voice::Config::IsQueuedVoiceExpired(age)) continue;
         ParsedPacket parsed{};
         if (!buildPacket(task.packet, parsed)) {
             continue;
         }
+        if (!VoiceSessionRegistry::instance().authorize(
+                fixedString(parsed.header->sessionToken, sizeof(parsed.header->sessionToken)),
+                parsed.roomCode, parsed.speakerName, parsed.senderKey)) continue;
         packetRouter.dispatch(parsed);
     }
 }
@@ -235,12 +250,14 @@ void VoiceServer::handleVoiceData(ParsedPacket& packet){
     thread_local std::vector<std::pair<CLIENT_KEY, ClientInfo>> clientsSnapshot;
     clientManager.getRoomClientsSnapshot(packet.roomCode, clientsSnapshot);
 
-    auto sharedPayload = packet.sharedPayload;
-    if (!sharedPayload) {
-        sharedPayload = std::make_shared<std::vector<char>>(packet.rawBuffer, packet.rawBuffer + packet.rawSize);
-    }
+    // Never disclose a sender bearer token to other room participants.
+    auto sanitized = std::make_shared<std::vector<char>>(packet.rawBuffer, packet.rawBuffer + packet.rawSize);
+    auto* relayHeader = reinterpret_cast<VoicePacketHeader*>(sanitized->data());
+    std::fill(std::begin(relayHeader->sessionToken), std::end(relayHeader->sessionToken), 0);
+    std::shared_ptr<const std::vector<char>> sharedPayload = sanitized;
     for (const auto& [otherKey, otherClient] : clientsSnapshot) {
-        if(otherKey != packet.senderKey){
+        if(otherKey != packet.senderKey &&
+           VoiceSessionRegistry::instance().isEndpointAuthorized(packet.roomCode, otherKey)){
             network.sendUdp(otherClient.addr, sharedPayload);
         }
     }

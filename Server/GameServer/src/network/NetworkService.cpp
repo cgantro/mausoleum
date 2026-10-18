@@ -2,8 +2,8 @@
 #include <algorithm>
 #include "common/logging/Logger.h"
 
-NetworkService::NetworkService()
-    : io_(connections_, inboundQueue_, outboundQueue_) {}
+NetworkService::NetworkService(size_t inboundCapacity, size_t outboundCapacity)
+    : inboundQueue_(inboundCapacity), outboundQueue_(outboundCapacity), io_(connections_, inboundQueue_, outboundQueue_) {}
 
 NetworkService::~NetworkService() {
     stop();
